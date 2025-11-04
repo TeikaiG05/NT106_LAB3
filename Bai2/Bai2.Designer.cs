@@ -1,6 +1,6 @@
 ﻿namespace Bai2
 {
-    partial class Bai2
+    partial class BAI2
     {
         /// <summary>
         /// Required designer variable.
@@ -28,20 +28,51 @@
         /// </summary>
         private void InitializeComponent()
         {
+            this.butlis = new System.Windows.Forms.Button();
+            this.richTextBox1 = new System.Windows.Forms.RichTextBox();
             this.SuspendLayout();
             // 
-            // Bai2
+            // butlis
+            // 
+            this.butlis.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.butlis.Location = new System.Drawing.Point(64, 86);
+            this.butlis.Name = "butlis";
+            this.butlis.Size = new System.Drawing.Size(75, 23);
+            this.butlis.TabIndex = 0;
+            this.butlis.Text = "Listen";
+            this.butlis.UseVisualStyleBackColor = true;
+            this.butlis.Click += new System.EventHandler(this.butlis_Click);
+            // 
+            // richTextBox1
+            // 
+            this.richTextBox1.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.richTextBox1.Location = new System.Drawing.Point(12, 165);
+            this.richTextBox1.Name = "richTextBox1";
+            this.richTextBox1.Size = new System.Drawing.Size(776, 285);
+            this.richTextBox1.TabIndex = 1;
+            this.richTextBox1.Text = "";
+            // 
+            // BAI2
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(800, 450);
-            this.Name = "Bai2";
+            this.Controls.Add(this.richTextBox1);
+            this.Controls.Add(this.butlis);
+            this.Name = "BAI2";
             this.Text = "Bai2";
-            this.Load += new System.EventHandler(this.Bai2_Load);
             this.ResumeLayout(false);
 
         }
 
         #endregion
+
+        private System.Windows.Forms.Button butlis;
+        private System.Windows.Forms.RichTextBox richTextBox1;
     }
 }
+
