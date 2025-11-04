@@ -96,6 +96,38 @@ namespace Bai5
                     }
                     break;
 
+                case "NEWMON":
+                    if (parts.Length >= 4)
+                    {
+                        string nguoi = parts[1];
+                        string tenmon = parts[2];
+                        string base64 = parts[3];
+
+                        try
+                        {
+                            if (!string.IsNullOrEmpty(base64))
+                            {
+                                byte[] imgBytes = Convert.FromBase64String(base64);
+                                using (var ms = new MemoryStream(imgBytes))
+                                {
+                                    picanhmon.Image = Image.FromStream(ms);
+                                    picanhmon.SizeMode = PictureBoxSizeMode.Zoom;
+                                }
+                            }
+
+                            texttennguoi.Text = nguoi;
+                            texttenmon.Text = tenmon;
+
+                            MessageBox.Show($"Món mới từ {nguoi}: {tenmon}");
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show("Lỗi nhận ảnh: " + ex.Message);
+                        }
+                    }
+                    break;
+
+
 
                 default:
                     break;
@@ -109,7 +141,7 @@ namespace Bai5
             {
                 while (true)
                 {
-                    byte[] buffer = new byte[1024 * 5];
+                    byte[] buffer = new byte[1024 * 64];
                     int received = client.Receive(buffer);
                     if (received == 0) break;
 

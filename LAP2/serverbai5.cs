@@ -15,26 +15,28 @@ namespace LAP2
 {
     public partial class serverbai5 : Form
     {
-        // Database
         private string dbFilePath;
-        private string filedb; // connection string
-
-        // Socket server
+        private string filedb;
         private Socket server;
         private List<Socket> clients = new List<Socket>();
         private Thread listenThread;
         private volatile bool serverRunning = false;
 
+        private string base64Image = ""; // ảnh đang chọn (lưu dạng base64)
+
         public serverbai5()
         {
             InitializeComponent();
-
-            // Prepare DB file path in application folder (safer than relative)
             dbFilePath = Path.Combine(Application.StartupPath, "monan.db");
             filedb = $"Data Source={dbFilePath};Version=3;";
 
-            // Do NOT start server or open DB that may block UI here.
-            // Initialize UI state if needed.
+            this.themng.Click += new System.EventHandler(this.themng_Click);
+            this.themanh.Click += new System.EventHandler(this.themanh_Click);
+            this.themmon.Click += new System.EventHandler(this.themmon_Click);
+            this.hienthimon.Click += new System.EventHandler(this.hienthimon_Click);
+            this.xoamon.Click += new System.EventHandler(this.xoamon_Click);
+            this.ngaunhien.Click += new System.EventHandler(this.ngaunhien_Click);
+
             this.Load += Serverbai5_Load;
             this.FormClosing += Serverbai5_FormClosing;
         }
@@ -48,10 +50,9 @@ namespace LAP2
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Lỗi khi khởi tạo cơ sở dữ liệu: " + ex.Message);
+                MessageBox.Show("Lỗi khi khởi tạo CSDL: " + ex.Message);
             }
 
-            // Start server after form loaded so UI shows up even if server later fails
             StartServer();
         }
 
@@ -60,11 +61,9 @@ namespace LAP2
             StopServer();
         }
 
-        #region Database helpers
-
+        #region Database
         private void EnsureDatabase()
         {
-            // If db file not exist -> create and initialize schema
             if (!File.Exists(dbFilePath))
             {
                 SQLiteConnection.CreateFile(dbFilePath);
@@ -73,16 +72,14 @@ namespace LAP2
                     conn.Open();
 
                     string sqlNguoiDung = @"
-                        CREATE TABLE IF NOT EXISTS NguoiDung
-                        (
+                        CREATE TABLE IF NOT EXISTS NguoiDung (
                             IDNCC INTEGER PRIMARY KEY AUTOINCREMENT,
                             HoVaTen TEXT NOT NULL,
                             QuyenHan TEXT
                         );";
 
                     string sqlMonAn = @"
-                        CREATE TABLE IF NOT EXISTS MonAn
-                        (
+                        CREATE TABLE IF NOT EXISTS MonAn (
                             IDMA INTEGER PRIMARY KEY AUTOINCREMENT,
                             TenMonAn TEXT NOT NULL,
                             HinhAnh TEXT,
@@ -90,10 +87,8 @@ namespace LAP2
                             FOREIGN KEY(IDNCC) REFERENCES NguoiDung(IDNCC)
                         );";
 
-                    using (var cmd = new SQLiteCommand(sqlNguoiDung, conn))
-                        cmd.ExecuteNonQuery();
-                    using (var cmd = new SQLiteCommand(sqlMonAn, conn))
-                        cmd.ExecuteNonQuery();
+                    using (var cmd = new SQLiteCommand(sqlNguoiDung, conn)) cmd.ExecuteNonQuery();
+                    using (var cmd = new SQLiteCommand(sqlMonAn, conn)) cmd.ExecuteNonQuery();
 
                     conn.Close();
                 }
@@ -113,13 +108,10 @@ namespace LAP2
                     {
                         DataTable dt = new DataTable();
                         dt.Load(reader);
-
-                        // Ensure invoke if called from non-UI thread (we call from UI thread here)
                         boxngcc.DataSource = dt;
                         boxngcc.DisplayMember = "HoVaTen";
                         boxngcc.ValueMember = "IDNCC";
                     }
-                    conn.Close();
                 }
             }
             catch (Exception ex)
@@ -127,16 +119,14 @@ namespace LAP2
                 MessageBox.Show("Lỗi khi load người dùng: " + ex.Message);
             }
         }
-
         #endregion
 
-        #region UI button handlers (DB operations)
-
+        #region Nút xử lý DB (UI)
         private void themng_Click(object sender, EventArgs e)
         {
             if (string.IsNullOrWhiteSpace(boxtennguoi.Text))
             {
-                MessageBox.Show("Vui lòng nhập tên người dùng.");
+                MessageBox.Show("Nhập tên người dùng!");
                 return;
             }
 
@@ -152,7 +142,6 @@ namespace LAP2
                         cmd.Parameters.AddWithValue("@QuyenHan", boxquyen.Text.Trim());
                         cmd.ExecuteNonQuery();
                     }
-                    conn.Close();
                 }
 
                 MessageBox.Show("Thêm người dùng thành công.");
@@ -173,13 +162,24 @@ namespace LAP2
                 ofd.Filter = "Image Files|*.jpg;*.jpeg;*.png;*.bmp;*.gif";
                 if (ofd.ShowDialog() == DialogResult.OK)
                 {
-                    boxanh.Text = ofd.FileName;
                     try
                     {
+                        // Hiển thị ảnh
                         pictureBox1.Image?.Dispose();
                         pictureBox1.Image = Image.FromFile(ofd.FileName);
+                        pictureBox1.SizeMode = PictureBoxSizeMode.Zoom;
+
+                        // Chuyển sang base64
+                        byte[] bytes = File.ReadAllBytes(ofd.FileName);
+                        base64Image = Convert.ToBase64String(bytes);
+                        boxanh.Text = Path.GetFileName(ofd.FileName); // chỉ hiển thị tên ảnh
                     }
-                    catch { pictureBox1.Image = null; }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Lỗi khi chọn ảnh: " + ex.Message);
+                        pictureBox1.Image = null;
+                        base64Image = "";
+                    }
                 }
             }
         }
@@ -188,14 +188,7 @@ namespace LAP2
         {
             if (string.IsNullOrWhiteSpace(boxtenmon.Text) || boxngcc.SelectedItem == null)
             {
-                MessageBox.Show("Vui lòng nhập tên món ăn và chọn người cung cấp món ăn.");
-                return;
-            }
-
-            string hinhanh = boxanh.Text;
-            if (!string.IsNullOrEmpty(hinhanh) && !File.Exists(hinhanh))
-            {
-                MessageBox.Show("Vui lòng chọn hình ảnh hợp lệ.");
+                MessageBox.Show("Vui lòng nhập tên món ăn và chọn người cung cấp.");
                 return;
             }
 
@@ -208,22 +201,34 @@ namespace LAP2
                     using (var cmd = new SQLiteCommand(sql, conn))
                     {
                         cmd.Parameters.AddWithValue("@TenMonAn", boxtenmon.Text.Trim());
-                        cmd.Parameters.AddWithValue("@HinhAnh", hinhanh);
+                        cmd.Parameters.AddWithValue("@HinhAnh", base64Image ?? "");
                         cmd.Parameters.AddWithValue("@IDNCC", boxngcc.SelectedValue);
                         cmd.ExecuteNonQuery();
                     }
-                    conn.Close();
                 }
 
-                MessageBox.Show("Thêm món ăn thành công.");
+                // Gửi qua tất cả client
+                string nguoi = boxngcc.Text.Trim();
+
+                // Làm sạch chuỗi Base64 (tránh xuống dòng gây lỗi)
+                string safeBase64 = (base64Image ?? "")
+                    .Replace("\r", "")
+                    .Replace("\n", "")
+                    .Trim();
+
+                // Tăng tính ổn định khi gửi ảnh (base64 có thể dài)
+                string message = $"NEWMON|{nguoi}|{boxtenmon.Text.Trim()}|{safeBase64}";
+                SendToAllClients(message);
+
+                MessageBox.Show("Thêm món thành công!");
                 boxtenmon.Clear();
                 boxanh.Clear();
-                pictureBox1.Image?.Dispose();
                 pictureBox1.Image = null;
+                base64Image = "";
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Lỗi khi thêm món ăn: " + ex.Message);
+                MessageBox.Show("Lỗi khi thêm món: " + ex.Message);
             }
         }
 
@@ -234,20 +239,14 @@ namespace LAP2
                 using (var conn = new SQLiteConnection(filedb))
                 {
                     conn.Open();
-                    string sql = @"
-                        SELECT MonAn.IDMA, MonAn.TenMonAn, MonAn.HinhAnh, NguoiDung.HoVaTen 
-                        FROM MonAn 
-                        LEFT JOIN NguoiDung ON MonAn.IDNCC = NguoiDung.IDNCC";
+                    string sql = "SELECT MonAn.IDMA, MonAn.TenMonAn, NguoiDung.HoVaTen FROM MonAn LEFT JOIN NguoiDung ON MonAn.IDNCC = NguoiDung.IDNCC";
                     using (var cmd = new SQLiteCommand(sql, conn))
                     using (var reader = cmd.ExecuteReader())
                     {
                         DataTable dt = new DataTable();
-                        dt.Load(reader);
-
-                        // UI thread: safe
+                        dt.Load(reader, LoadOption.OverwriteChanges);
                         dataGridView1.DataSource = dt;
                     }
-                    conn.Close();
                 }
             }
             catch (Exception ex)
@@ -258,36 +257,30 @@ namespace LAP2
 
         private void xoamon_Click(object sender, EventArgs e)
         {
+            if (dataGridView1.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Vui lòng chọn món để xóa.");
+                return;
+            }
+
             try
             {
-                if (dataGridView1.SelectedRows.Count == 0)
-                {
-                    MessageBox.Show("Vui lòng chọn món ăn để xóa.");
-                    return;
-                }
+                var idCell = dataGridView1.SelectedRows[0].Cells["IDMA"];
+                if (idCell == null) return;
 
-                // Get IDMA column: may be int32 or string - convert safe
-                var cell = dataGridView1.SelectedRows[0].Cells["IDMA"];
-                if (cell == null || cell.Value == null)
-                {
-                    MessageBox.Show("Không tìm thấy ID món.");
-                    return;
-                }
-                int idma = Convert.ToInt32(cell.Value);
-
+                int id = Convert.ToInt32(idCell.Value);
                 using (var conn = new SQLiteConnection(filedb))
                 {
                     conn.Open();
-                    string sql = "DELETE FROM MonAn WHERE IDMA = @IDMA";
+                    string sql = "DELETE FROM MonAn WHERE IDMA = @ID";
                     using (var cmd = new SQLiteCommand(sql, conn))
                     {
-                        cmd.Parameters.AddWithValue("@IDMA", idma);
+                        cmd.Parameters.AddWithValue("@ID", id);
                         cmd.ExecuteNonQuery();
                     }
-                    conn.Close();
                 }
 
-                MessageBox.Show("Xóa món ăn thành công.");
+                MessageBox.Show("Xóa món thành công.");
                 hienthimon_Click(sender, e);
             }
             catch (Exception ex)
@@ -295,96 +288,29 @@ namespace LAP2
                 MessageBox.Show("Lỗi khi xóa món: " + ex.Message);
             }
         }
-
-        private void ngaunhien_Click(object sender, EventArgs e)
-        {
-            try
-            {
-                using (var conn = new SQLiteConnection(filedb))
-                {
-                    conn.Open();
-                    string sql = @"
-                        SELECT MonAn.TenMonAn, MonAn.HinhAnh, NguoiDung.HoVaTen 
-                        FROM MonAn 
-                        LEFT JOIN NguoiDung ON MonAn.IDNCC = NguoiDung.IDNCC
-                        ORDER BY RANDOM() LIMIT 1";
-                    using (var cmd = new SQLiteCommand(sql, conn))
-                    using (var reader = cmd.ExecuteReader())
-                    {
-                        if (reader.Read())
-                        {
-                            string ten = reader.IsDBNull(0) ? "" : reader.GetString(0);
-                            string anh = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                            string nguoi = reader.IsDBNull(2) ? "" : reader.GetString(2);
-
-                            tenmon.Text = ten;
-                            tennguoi.Text = nguoi;
-
-                            if (!string.IsNullOrEmpty(anh) && File.Exists(anh))
-                            {
-                                try
-                                {
-                                    pictureBox2.Image?.Dispose();
-                                    pictureBox2.Image = Image.FromFile(anh);
-                                }
-                                catch
-                                {
-                                    pictureBox2.Image = null;
-                                }
-                            }
-                            else
-                            {
-                                pictureBox2.Image?.Dispose();
-                                pictureBox2.Image = null;
-                            }
-                        }
-                        else
-                        {
-                            MessageBox.Show("Không có món ăn trong cơ sở dữ liệu.");
-                        }
-                    }
-                    conn.Close();
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Lỗi khi lấy ngẫu nhiên: " + ex.Message);
-            }
-        }
-
         #endregion
 
-        #region Server socket
-
+        #region Socket server
         private void StartServer()
         {
             try
             {
-                // If already running, skip
                 if (serverRunning) return;
-
                 server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
                 IPEndPoint ep = new IPEndPoint(IPAddress.Any, 9000);
                 server.Bind(ep);
                 server.Listen(10);
-
                 serverRunning = true;
+
                 listenThread = new Thread(ListenClient);
                 listenThread.IsBackground = true;
                 listenThread.Start();
 
-                // Use Invoke to interact with UI thread (MessageBox is fine)
-                this.BeginInvoke(new Action(() =>
-                {
-                    MessageBox.Show("Server đã khởi động thành công trên cổng 9000!");
-                }));
+                MessageBox.Show("Server đã khởi động thành công trên cổng 9000!");
             }
             catch (Exception ex)
             {
-                this.BeginInvoke(new Action(() =>
-                {
-                    MessageBox.Show("Lỗi khi khởi động server: " + ex.Message);
-                }));
+                MessageBox.Show("Lỗi khởi động server: " + ex.Message);
             }
         }
 
@@ -393,35 +319,16 @@ namespace LAP2
             try
             {
                 serverRunning = false;
+                server?.Close();
 
-                try
-                {
-                    // Close listening socket
-                    server?.Close();
-                }
-                catch { }
-
-                // Close all client sockets
                 lock (clients)
                 {
                     foreach (var c in clients)
                     {
-                        try { c.Shutdown(SocketShutdown.Both); c.Close(); }
-                        catch { }
+                        try { c.Shutdown(SocketShutdown.Both); c.Close(); } catch { }
                     }
                     clients.Clear();
                 }
-
-                // Abort listen thread
-                try
-                {
-                    if (listenThread != null && listenThread.IsAlive)
-                    {
-                        listenThread.Join(500);
-                        if (listenThread.IsAlive) listenThread.Abort();
-                    }
-                }
-                catch { }
             }
             catch { }
         }
@@ -435,40 +342,32 @@ namespace LAP2
                     Socket client = server.Accept();
                     lock (clients) clients.Add(client);
 
-                    Thread recv = new Thread(() => ReceiveClient(client));
-                    recv.IsBackground = true;
-                    recv.Start();
+                    Thread t = new Thread(() => ReceiveClient(client));
+                    t.IsBackground = true;
+                    t.Start();
                 }
-                catch
-                {
-                    // if server closed, break
-                    if (!serverRunning) break;
-                }
+                catch { if (!serverRunning) break; }
             }
         }
 
         private void ReceiveClient(Socket client)
         {
-            byte[] buffer = new byte[1024 * 8];
+            byte[] buffer = new byte[1024 * 64];
             try
             {
                 while (serverRunning)
                 {
-                    int received = client.Receive(buffer);
-                    if (received == 0) break;
+                    int rec = client.Receive(buffer);
+                    if (rec == 0) break;
 
-                    string data = Encoding.UTF8.GetString(buffer, 0, received);
-                    // Process message
-                    ProcessClientMessage(client, data);
+                    string msg = Encoding.UTF8.GetString(buffer, 0, rec);
+                    ProcessClientMessage(client, msg);
                 }
             }
-            catch
-            {
-                // ignore, client disconnected
-            }
+            catch { }
             finally
             {
-                lock (clients) { clients.Remove(client); }
+                lock (clients) clients.Remove(client);
                 try { client.Close(); } catch { }
             }
         }
@@ -479,20 +378,29 @@ namespace LAP2
             {
                 if (client != null && client.Connected)
                 {
-                    var b = Encoding.UTF8.GetBytes(msg);
+                    byte[] b = Encoding.UTF8.GetBytes(msg);
                     client.Send(b);
                 }
             }
             catch { }
         }
 
+        private void SendToAllClients(string msg)
+        {
+            byte[] b = Encoding.UTF8.GetBytes(msg);
+            lock (clients)
+            {
+                foreach (var c in clients)
+                {
+                    try { c.Send(b); } catch { }
+                }
+            }
+        }
         #endregion
 
-        #region Process client messages (simple protocol)
-
+        #region Xử lý lệnh client
         private void ProcessClientMessage(Socket client, string msg)
         {
-            // Protocol: TYPE|...  (very simple)
             if (string.IsNullOrEmpty(msg)) return;
 
             string[] parts = msg.Split('|');
@@ -500,141 +408,17 @@ namespace LAP2
 
             try
             {
-                switch (cmd)
+                if (cmd == "RANDOM_GLOBAL")
                 {
-                    case "USER":
-                        // USER|Name|Role
-                        if (parts.Length >= 3)
-                        {
-                            string name = parts[1];
-                            string role = parts[2];
-                            InsertNguoiDung(name, role);
-                            SendToClient(client, "USER_OK|");
-                        }
-                        break;
-
-                    case "FOOD":
-                        // FOOD|User|FoodName|ImagePath
-                        if (parts.Length >= 4)
-                        {
-                            string user = parts[1];
-                            string food = parts[2];
-                            string img = parts[3];
-                            InsertMonAn(user, food, img);
-                            SendToClient(client, "FOOD_OK|");
-                        }
-                        break;
-
-                    case "SHOW":
-                        // return DATA|item1;item2;...
-                        var data = BuildDataString();
-                        SendToClient(client, "DATA|" + data);
-                        break;
-
-                    case "RANDOM_GLOBAL":
-                        {
-                            var rand = GetRandomDish();
-                            if (rand != null)
-                            {
-                                string base64 = "";
-                                if (File.Exists(rand.Value.Image))
-                                {
-                                    byte[] bytes = File.ReadAllBytes(rand.Value.Image);
-                                    base64 = Convert.ToBase64String(bytes);
-                                }
-
-                                SendToClient(client, $"RANDOM|{rand.Value.Provider}|{rand.Value.Name}|{base64}");
-                            }
-                            else
-                            {
-                                SendToClient(client, "RANDOM|||");
-                            }
-                            break;
-                        }
-
-                }
-            }
-            catch
-            {
-                // ignore processing errors
-            }
-        }
-
-        #endregion
-
-        #region DB helper methods used by socket logic
-
-        private void InsertNguoiDung(string name, string role)
-        {
-            try
-            {
-                using (var conn = new SQLiteConnection(filedb))
-                {
-                    conn.Open();
-                    string sql = "INSERT INTO NguoiDung (HoVaTen, QuyenHan) VALUES (@n, @r)";
-                    using (var cmd = new SQLiteCommand(sql, conn))
+                    var rand = GetRandomDish();
+                    if (rand != null)
                     {
-                        cmd.Parameters.AddWithValue("@n", name);
-                        cmd.Parameters.AddWithValue("@r", role);
-                        cmd.ExecuteNonQuery();
+                        SendToClient(client, $"RANDOM|{rand.Value.Provider}|{rand.Value.Name}|{rand.Value.Image}");
                     }
-                    conn.Close();
-                }
-
-                // update combobox on UI thread
-                this.BeginInvoke(new Action(() => LoadNguoiDung()));
-            }
-            catch { }
-        }
-
-        private void InsertMonAn(string user, string food, string img)
-        {
-            try
-            {
-                using (var conn = new SQLiteConnection(filedb))
-                {
-                    conn.Open();
-                    string sql = @"
-                        INSERT INTO MonAn (TenMonAn, HinhAnh, IDNCC)
-                        VALUES (@ten, @anh, (SELECT IDNCC FROM NguoiDung WHERE HoVaTen = @user LIMIT 1))";
-                    using (var cmd = new SQLiteCommand(sql, conn))
-                    {
-                        cmd.Parameters.AddWithValue("@ten", food);
-                        cmd.Parameters.AddWithValue("@anh", img);
-                        cmd.Parameters.AddWithValue("@user", user);
-                        cmd.ExecuteNonQuery();
-                    }
-                    conn.Close();
+                    else SendToClient(client, "RANDOM|||");
                 }
             }
             catch { }
-        }
-
-        private string BuildDataString()
-        {
-            var sb = new StringBuilder();
-            try
-            {
-                using (var conn = new SQLiteConnection(filedb))
-                {
-                    conn.Open();
-                    string sql = "SELECT TenMonAn, HinhAnh, (SELECT HoVaTen FROM NguoiDung WHERE IDNCC = MonAn.IDNCC) FROM MonAn";
-                    using (var cmd = new SQLiteCommand(sql, conn))
-                    using (var reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            string ten = reader.IsDBNull(0) ? "" : reader.GetString(0);
-                            string anh = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                            string nguoi = reader.IsDBNull(2) ? "" : reader.GetString(2);
-                            sb.Append($"{ten},{anh},{nguoi};");
-                        }
-                    }
-                    conn.Close();
-                }
-            }
-            catch { }
-            return sb.ToString();
         }
 
         private (string Name, string Image, string Provider)? GetRandomDish()
@@ -658,7 +442,6 @@ namespace LAP2
                             return (ten, anh, nguoi);
                         }
                     }
-                    conn.Close();
                 }
             }
             catch { }
@@ -666,5 +449,133 @@ namespace LAP2
         }
 
         #endregion
+
+        private void ngaunhien_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                using (var conn = new SQLiteConnection(filedb))
+                {
+                    conn.Open();
+                    string sql = @"
+                SELECT MonAn.TenMonAn, MonAn.HinhAnh, NguoiDung.HoVaTen 
+                FROM MonAn 
+                JOIN NguoiDung ON MonAn.IDNCC = NguoiDung.IDNCC
+                ORDER BY RANDOM() LIMIT 1";
+
+                    using (var cmd = new SQLiteCommand(sql, conn))
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            string tenMon = reader.GetString(0);
+                            string hinhAnhBase64 = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                            string tenNguoi = reader.GetString(2);
+
+                            tenmon.Text = tenMon;
+                            tennguoi.Text = tenNguoi;
+
+                            // Giải mã ảnh từ base64
+                            if (!string.IsNullOrEmpty(hinhAnhBase64))
+                            {
+                                byte[] bytes = Convert.FromBase64String(hinhAnhBase64);
+                                using (var ms = new MemoryStream(bytes))
+                                {
+                                    pictureBox2.Image = Image.FromStream(ms);
+                                    pictureBox2.SizeMode = PictureBoxSizeMode.Zoom;
+                                }
+                            }
+                            else
+                            {
+                                pictureBox2.Image = null;
+                            }
+                        }
+                        else
+                        {
+                            MessageBox.Show("Không có món ăn nào trong cơ sở dữ liệu.");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Lỗi khi hiển thị món ngẫu nhiên: " + ex.Message);
+            }
+        }
+
+        private void resetmonan_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                string dbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "monan.db");
+                using (SQLiteConnection conn = new SQLiteConnection($"Data Source={dbPath};Version=3;"))
+                {
+                    conn.Open();
+
+                    // 🧹 Xóa cả hai bảng (nếu tồn tại)
+                    string dropTables = @"
+                DROP TABLE IF EXISTS MonAn;
+                DROP TABLE IF EXISTS NguoiDung;
+            ";
+                    using (SQLiteCommand cmd = new SQLiteCommand(dropTables, conn))
+                    {
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    // 🧱 Tạo lại bảng trống
+                    string createTables = @"
+                CREATE TABLE NguoiDung (
+                    IDNCC INTEGER PRIMARY KEY AUTOINCREMENT,
+                    HoVaTen TEXT NOT NULL,
+                    QuyenHan TEXT
+                );
+
+                CREATE TABLE MonAn (
+                    IDMA INTEGER PRIMARY KEY AUTOINCREMENT,
+                    TenMonAn TEXT NOT NULL,
+                    HinhAnh TEXT,
+                    IDNCC INTEGER,
+                    FOREIGN KEY(IDNCC) REFERENCES NguoiDung(IDNCC)
+                );
+            ";
+                    using (SQLiteCommand cmd = new SQLiteCommand(createTables, conn))
+                    {
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    conn.Close();
+                }
+
+                // 🧽 Làm sạch toàn bộ giao diện
+                boxtenmon.Clear();
+                boxanh.Clear();
+                boxtennguoi.Clear();
+                boxquyen.Clear();
+                pictureBox1.Image = null;
+                pictureBox2.Image = null;
+                dataGridView1.DataSource = null;
+
+                // 🧺 Dọn combobox
+                boxngcc.DataSource = null;
+                boxngcc.Items.Clear();
+                boxngcc.Text = "";
+                boxngcc.SelectedIndex = -1;
+                boxngcc.Refresh();
+
+                MessageBox.Show("✅ Đã reset hoàn toàn cơ sở dữ liệu (MonAn + NguoiDung)!",
+                                "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("❌ Lỗi khi reset: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+
+
+        private void boxngcc_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+        }
     }
 }
