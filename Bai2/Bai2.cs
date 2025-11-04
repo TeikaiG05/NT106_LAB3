@@ -24,6 +24,7 @@ namespace Bai2
         {
             CheckForIllegalCrossThreadCalls = false;
             Thread serverThread = new Thread(new ThreadStart(StartUnsafeThread));
+            listViewCommand.Items.Add(new ListViewItem("Listenning!"));
             serverThread.Start();
         }
         void StartUnsafeThread()
@@ -36,7 +37,7 @@ namespace Bai2
             // Tạo socket bên nhận, socket này là socket lắng nghe các kết nối tới nó tại địa chỉ IP của 
             // máy và port 8080.Đây là 1 TCP / IP socket.
             //AddressFamily: trả về họ địa chỉ của địa chỉ IP hiện hành. Ở đây là địa chỉ Ipv4 nên chọn 
-            AddressFamily.InterNetwork
+            //AddressFamily.InterNetwork
             //SocketType: kiểu kết nối socket, ở đây dùng luồng Stream để nhận dữ liệu 
             //ProtocolType: sử dụng giao thức kết nối nào, ở đây sử dụng kết nối TCP 
             // Ba tham số của hàm đi với nhau khi ta thực hiện kết nối TCP. 
@@ -45,8 +46,9 @@ namespace Bai2
                     SocketType.Stream,
                     ProtocolType.Tcp
                     );
-            IPEndPoint ipepServer = new IPEndPoint(IPAddress.Parse(“127.0.0.1”), 8080);
+            IPEndPoint ipepServer = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 8080);
             // Gán socket lắng nghe tới địa chỉ IP của máy và port 8080 
+            listenerSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             listenerSocket.Bind(ipepServer);
             // bắt đầu lắng nghe. Socket.Listen(int backlog)  
             // với backlog: là độ dài tối đa của hàng đợi các kết nối đang chờ xử lý 
@@ -61,11 +63,24 @@ namespace Bai2
                 do
                 {
                     bytesReceived = clientSocket.Receive(recv);
+                    if (bytesReceived == 0)
+                    {
+                        listViewCommand.Items.Add(new ListViewItem("Client disconnected"));
+                        break;
+                    }
                     text += Encoding.ASCII.GetString(recv);
                 } while (text[text.Length - 1] != '\n');
-                listViewCommand.Items.Add(new ListViewItem(text));
+                {
+                    if (text == "") break;
+                    listViewCommand.Items.Add(new ListViewItem(text));
+                    byte[] sendData = Encoding.ASCII.GetBytes("Server received: " + text + "\r\n");
+                    clientSocket.Send(sendData);
+                }
             }
             listenerSocket.Close();
+            clientSocket.Close();
         }
+
+
     }
     }
