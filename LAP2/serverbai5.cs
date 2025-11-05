@@ -22,7 +22,7 @@ namespace LAP2
         private Thread listenThread;
         private volatile bool serverRunning = false;
 
-        private string base64Image = ""; // ảnh đang chọn (lưu dạng base64)
+        private string base64Image = "";
 
         public serverbai5()
         {
@@ -164,15 +164,13 @@ namespace LAP2
                 {
                     try
                     {
-                        // Hiển thị ảnh
                         pictureBox1.Image?.Dispose();
                         pictureBox1.Image = Image.FromFile(ofd.FileName);
                         pictureBox1.SizeMode = PictureBoxSizeMode.Zoom;
 
-                        // Chuyển sang base64
                         byte[] bytes = File.ReadAllBytes(ofd.FileName);
                         base64Image = Convert.ToBase64String(bytes);
-                        boxanh.Text = Path.GetFileName(ofd.FileName); // chỉ hiển thị tên ảnh
+                        boxanh.Text = Path.GetFileName(ofd.FileName);
                     }
                     catch (Exception ex)
                     {
@@ -207,16 +205,13 @@ namespace LAP2
                     }
                 }
 
-                // Gửi qua tất cả client
                 string nguoi = boxngcc.Text.Trim();
 
-                // Làm sạch chuỗi Base64 (tránh xuống dòng gây lỗi)
                 string safeBase64 = (base64Image ?? "")
                     .Replace("\r", "")
                     .Replace("\n", "")
                     .Trim();
 
-                // Tăng tính ổn định khi gửi ảnh (base64 có thể dài)
                 string message = $"NEWMON|{nguoi}|{boxtenmon.Text.Trim()}|{safeBase64}";
                 SendToAllClients(message);
 
@@ -295,13 +290,15 @@ namespace LAP2
         {
             try
             {
-                if (serverRunning) return;
-                server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                IPEndPoint ep = new IPEndPoint(IPAddress.Any, 9000);
-                server.Bind(ep);
-                server.Listen(10);
+                if (serverRunning) return; // Nếu server đang chạy thì bỏ qua
+
+                server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp); // Tạo socket TCP để lắng nghe
+                IPEndPoint ep = new IPEndPoint(IPAddress.Any, 9000); // Lắng nghe mọi IP, cổng 9000
+                server.Bind(ep); // Gán socket vào địa chỉ + port
+                server.Listen(10); // Cho phép tối đa 10 client chờ kết nối
                 serverRunning = true;
 
+                // Tạo thread để chấp nhận kết nối client
                 listenThread = new Thread(ListenClient);
                 listenThread.IsBackground = true;
                 listenThread.Start();
@@ -319,8 +316,9 @@ namespace LAP2
             try
             {
                 serverRunning = false;
-                server?.Close();
+                server?.Close(); // Đóng socket lắng nghe
 
+                // Ngắt và dọn danh sách client
                 lock (clients)
                 {
                     foreach (var c in clients)
@@ -339,9 +337,9 @@ namespace LAP2
             {
                 try
                 {
-                    Socket client = server.Accept();
-                    lock (clients) clients.Add(client);
-
+                    Socket client = server.Accept(); // Chấp nhận kết nối mới
+                    lock (clients) clients.Add(client); // Lưu client đang hoạt động
+                    // Mỗi client được xử lý trên 1 thread riêng
                     Thread t = new Thread(() => ReceiveClient(client));
                     t.IsBackground = true;
                     t.Start();
@@ -356,21 +354,20 @@ namespace LAP2
             {
                 while (serverRunning)
                 {
-                    // Đọc 4 byte đầu tiên (độ dài thông điệp)
+                    // Đọc trước 4 byte chiều dài dữ liệu
                     byte[] lenBuf = ReadExact(client, 4);
                     if (lenBuf == null) break;
 
                     int length = BitConverter.ToInt32(lenBuf, 0);
-                    if (length <= 0 || length > 10_000_000) break; // tránh gói lỗi
+                    if (length <= 0 || length > 10_000_000) break;
 
-                    // Đọc đúng số byte tiếp theo
+                    // Đọc đúng số byte của dữ liệu
                     byte[] payload = ReadExact(client, length);
                     if (payload == null) break;
 
-                    // Giải mã chuỗi
                     string msg = Encoding.UTF8.GetString(payload);
 
-                    // Xử lý lệnh
+                    // Xử lý lệnh mà client gửi đến
                     ProcessClientMessage(client, msg);
                 }
             }
@@ -409,8 +406,7 @@ namespace LAP2
                 if (client != null && client.Connected)
                 {
                     byte[] payload = Encoding.UTF8.GetBytes(msg);
-                    byte[] lenPrefix = BitConverter.GetBytes(payload.Length); // little-endian
-                                                                              // nếu muốn network order dùng IPAddress.HostToNetworkOrder
+                    byte[] lenPrefix = BitConverter.GetBytes(payload.Length); 
                     byte[] packet = new byte[4 + payload.Length];
                     Array.Copy(lenPrefix, 0, packet, 0, 4);
                     Array.Copy(payload, 0, packet, 4, payload.Length);
@@ -444,6 +440,7 @@ namespace LAP2
         #region Xử lý lệnh client
         private void ProcessClientMessage(Socket client, string msg)
         {
+            // Nếu chuỗi rỗng thì bỏ qua
             if (string.IsNullOrEmpty(msg)) return;
             string[] parts = msg.Split('|');
             string cmd = parts[0].ToUpperInvariant();
@@ -453,6 +450,7 @@ namespace LAP2
                 switch (cmd)
                 {
                     case "USER":
+                        // Lưu thông tin người dùng mới vào bảng NguoiDung
                         using (var conn = new SQLiteConnection(filedb))
                         {
                             conn.Open();
@@ -468,6 +466,7 @@ namespace LAP2
                         break;
 
                     case "FOOD":
+                        // Lưu món ăn mới do người dùng thêm
                         using (var conn = new SQLiteConnection(filedb))
                         {
                             conn.Open();
@@ -480,17 +479,15 @@ namespace LAP2
                                 var obj = cmdSql.ExecuteScalar();
                                 if (obj != null) id = Convert.ToInt32(obj);
                             }
+                            // Nếu không tìm thấy người dùng
                             if (id == -1)
                             {
                                 SendToClient(client, "ERROR|Người dùng không tồn tại");
                                 return;
                             }
-
-                            // ✅ Giữ nguyên form, chỉ thay logic ảnh
-                            // Trước đây: kiểm tra File.Exists(parts[3]) → luôn sai
-                            // Giờ: lưu trực tiếp base64 mà client gửi lên
+                            // Lấy dữ liệu ảnh base64 và tên món
                             string base64 = parts[3];
-
+                            // Thêm món ăn mới vào bảng MonAn
                             string sqlAdd = "INSERT INTO MonAn (TenMonAn, HinhAnh, IDNCC) VALUES (@Ten,@Img,@ID)";
                             using (var cmdSql = new SQLiteCommand(sqlAdd, conn))
                             {
@@ -510,6 +507,7 @@ namespace LAP2
                         using (var conn = new SQLiteConnection(filedb))
                         {
                             conn.Open();
+                            // Lấy tên món, hình ảnh và tên người tạo
                             string sql = "SELECT TenMonAn, HinhAnh, (SELECT HoVaTen FROM NguoiDung WHERE IDNCC=MonAn.IDNCC) FROM MonAn";
                             using (var cmdSql = new SQLiteCommand(sql, conn))
                             using (var reader = cmdSql.ExecuteReader())
@@ -531,7 +529,6 @@ namespace LAP2
                         using (var conn = new SQLiteConnection(filedb))
                         {
                             conn.Open();
-
                             // Tìm ID người dùng theo tên
                             string sqlID = "SELECT IDNCC FROM NguoiDung WHERE HoVaTen=@name LIMIT 1";
                             int id = -1;
@@ -546,8 +543,7 @@ namespace LAP2
                                 SendToClient(client, "ERROR|Người dùng không tồn tại");
                                 return;
                             }
-
-                            // Lấy danh sách món ăn của người đó
+                            // Lấy danh sách món của người này
                             string sqlGet = "SELECT TenMonAn, HinhAnh FROM MonAn WHERE IDNCC=@id";
                             List<(string, string)> ds = new List<(string, string)>();
                             using (var cmdSql = new SQLiteCommand(sqlGet, conn))
@@ -558,7 +554,7 @@ namespace LAP2
                                     while (rd.Read())
                                     {
                                         string tenMon = rd.GetString(0);
-                                        string hinhAnh = rd.IsDBNull(1) ? "" : rd.GetString(1); // ✅ lấy base64 ảnh
+                                        string hinhAnh = rd.IsDBNull(1) ? "" : rd.GetString(1);
                                         ds.Add((tenMon, hinhAnh));
                                     }
                                 }
@@ -569,12 +565,10 @@ namespace LAP2
                                 SendToClient(client, $"RANDOM_PERSONAL|{parts[1]}|Chưa có món nào|");
                                 return;
                             }
-
-                            // Random món trong danh sách
+                            // Chọn ngẫu nhiên một món trong danh sách
                             Random rnd = new Random();
                             var mon = ds[rnd.Next(ds.Count)];
 
-                            // ✅ Gửi luôn ảnh base64 cho client
                             SendToClient(client, $"RANDOM_PERSONAL|{parts[1]}|{mon.Item1}|{mon.Item2}");
                         }
                         break;
@@ -585,6 +579,7 @@ namespace LAP2
                         using (var conn = new SQLiteConnection(filedb))
                         {
                             conn.Open();
+                            // Xóa tất cả món do người này thêm
                             string sql = @"DELETE FROM MonAn WHERE IDNCC=(SELECT IDNCC FROM NguoiDung WHERE HoVaTen=@name)";
                             using (var cmdSql = new SQLiteCommand(sql, conn))
                             {
@@ -595,7 +590,6 @@ namespace LAP2
 
                         SendToClient(client, "OK|Đã xóa món cá nhân");
 
-                        // 🟢 Gửi lại danh sách món mới cho client (tự động refresh)
                         using (var conn = new SQLiteConnection(filedb))
                         {
                             conn.Open();
@@ -622,8 +616,7 @@ namespace LAP2
                         using (var conn = new SQLiteConnection(filedb))
                         {
                             conn.Open();
-
-                            // Lấy toàn bộ món ăn trong database (có ảnh)
+                            // Lấy tất cả món ăn cùng tên người tạo
                             string sqlGet = "SELECT MonAn.TenMonAn, MonAn.HinhAnh, NguoiDung.HoVaTen " +
                                             "FROM MonAn JOIN NguoiDung ON MonAn.IDNCC = NguoiDung.IDNCC";
                             List<(string, string, string)> ds = new List<(string, string, string)>();
@@ -634,7 +627,7 @@ namespace LAP2
                                     while (rd.Read())
                                     {
                                         string tenMon = rd.GetString(0);
-                                        string hinhAnh = rd.IsDBNull(1) ? "" : rd.GetString(1); // ✅ đọc base64 ảnh
+                                        string hinhAnh = rd.IsDBNull(1) ? "" : rd.GetString(1);
                                         string tenNguoi = rd.GetString(2);
                                         ds.Add((tenMon, hinhAnh, tenNguoi));
                                     }
@@ -647,11 +640,9 @@ namespace LAP2
                                 return;
                             }
 
-                            // Random món từ danh sách toàn bộ
                             Random rnd = new Random();
                             var mon = ds[rnd.Next(ds.Count)];
 
-                            // ✅ Gửi luôn ảnh base64 cho client
                             SendToClient(client, $"RANDOM_GLOBAL|{mon.Item3}|{mon.Item1}|{mon.Item2}");
                         }
                         break;
@@ -698,6 +689,7 @@ namespace LAP2
 
         #endregion
 
+        #region  Ngẫu nhiên và reset
         private void ngaunhien_Click(object sender, EventArgs e)
         {
             try
@@ -723,7 +715,6 @@ namespace LAP2
                             tenmon.Text = tenMon;
                             tennguoi.Text = tenNguoi;
 
-                            // Giải mã ảnh từ base64
                             if (!string.IsNullOrEmpty(hinhAnhBase64))
                             {
                                 byte[] bytes = Convert.FromBase64String(hinhAnhBase64);
@@ -760,7 +751,6 @@ namespace LAP2
                 {
                     conn.Open();
 
-                    // 🧹 Xóa cả hai bảng (nếu tồn tại)
                     string dropTables = @"
                 DROP TABLE IF EXISTS MonAn;
                 DROP TABLE IF EXISTS NguoiDung;
@@ -770,7 +760,6 @@ namespace LAP2
                         cmd.ExecuteNonQuery();
                     }
 
-                    // 🧱 Tạo lại bảng trống
                     string createTables = @"
                 CREATE TABLE NguoiDung (
                     IDNCC INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -794,7 +783,6 @@ namespace LAP2
                     conn.Close();
                 }
 
-                // 🧽 Làm sạch toàn bộ giao diện
                 boxtenmon.Clear();
                 boxanh.Clear();
                 boxtennguoi.Clear();
@@ -803,27 +791,23 @@ namespace LAP2
                 pictureBox2.Image = null;
                 dataGridView1.DataSource = null;
 
-                // 🧺 Dọn combobox
                 boxngcc.DataSource = null;
                 boxngcc.Items.Clear();
                 boxngcc.Text = "";
                 boxngcc.SelectedIndex = -1;
                 boxngcc.Refresh();
 
-                MessageBox.Show("✅ Đã reset hoàn toàn cơ sở dữ liệu (MonAn + NguoiDung)!",
+                MessageBox.Show("Đã reset hoàn toàn cơ sở dữ liệu (MonAn + NguoiDung)!",
                                 "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("❌ Lỗi khi reset: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Lỗi khi reset: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
 
 
-        private void boxngcc_SelectedIndexChanged(object sender, EventArgs e)
-        {
-
-        }
+        #endregion
     }
 }

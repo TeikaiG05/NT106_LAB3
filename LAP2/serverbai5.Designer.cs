@@ -237,7 +237,6 @@ namespace LAP2
             this.boxngcc.Name = "boxngcc";
             this.boxngcc.Size = new System.Drawing.Size(118, 21);
             this.boxngcc.TabIndex = 20;
-            this.boxngcc.SelectedIndexChanged += new System.EventHandler(this.boxngcc_SelectedIndexChanged);
             // 
             // label8
             // 

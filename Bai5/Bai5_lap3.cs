@@ -67,7 +67,6 @@ namespace Bai5
                     }
                     break;
 
-                // ======= 3 loại RANDOM đều vào đây =======
                 case "RANDOM":
                 case "RANDOM_PERSONAL":
                 case "RANDOM_GLOBAL":
@@ -99,7 +98,6 @@ namespace Bai5
                     }
                     break;
 
-                // ======= Khi có món mới gửi đến =======
                 case "NEWMON":
                     if (parts.Length >= 4)
                     {
