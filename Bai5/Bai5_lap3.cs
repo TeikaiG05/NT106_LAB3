@@ -30,10 +30,10 @@ namespace Bai5
             CheckForIllegalCrossThreadCalls = false;
         }
 
-        void ProcessServerMessage(string msg)
+        void ProcessServerMessage(string message)
         {
             // Giả sử server gửi dạng: TYPE|data
-            string[] parts = msg.Split('|');
+            string[] parts = message.Split('|');
             string type = parts[0];
 
             switch (type)
@@ -72,17 +72,26 @@ namespace Bai5
 
 
                 case "RANDOM":
-                    ngaunhienten.Text = parts[1];
-                    ngaunhienmon.Text = parts[2];
-
-                    if (parts.Length > 3 && !string.IsNullOrEmpty(parts[3]))
+                case "RANDOM_PERSONAL":
+                case "RANDOM_GLOBAL":
+                    if (parts.Length >= 4)
                     {
+                        ngaunhienten.Text = parts[1];
+                        ngaunhienmon.Text = parts[2];
                         try
                         {
-                            byte[] imgBytes = Convert.FromBase64String(parts[3]);
-                            using (var ms = new MemoryStream(imgBytes))
+                            if (!string.IsNullOrEmpty(parts[3]))
                             {
-                                picmonanngaunhien.Image = Image.FromStream(ms);
+                                byte[] imgBytes = Convert.FromBase64String(parts[3]);
+                                using (var ms = new MemoryStream(imgBytes))
+                                {
+                                    picmonanngaunhien.Image = Image.FromStream(ms);
+                                    picmonanngaunhien.SizeMode = PictureBoxSizeMode.Zoom;
+                                }
+                            }
+                            else
+                            {
+                                picmonanngaunhien.Image = null;
                             }
                         }
                         catch
@@ -90,11 +99,8 @@ namespace Bai5
                             picmonanngaunhien.Image = null;
                         }
                     }
-                    else
-                    {
-                        picmonanngaunhien.Image = null;
-                    }
                     break;
+
 
                 case "NEWMON":
                     if (parts.Length >= 4)
@@ -141,13 +147,16 @@ namespace Bai5
             {
                 while (true)
                 {
-                    byte[] buffer = new byte[1024 * 64];
-                    int received = client.Receive(buffer);
-                    if (received == 0) break;
+                    // đọc 4 byte length
+                    byte[] lenBuf = ReadExact(4);
+                    if (lenBuf == null) break;
+                    int len = BitConverter.ToInt32(lenBuf, 0); // match server endianness
 
-                    string data = Encoding.UTF8.GetString(buffer, 0, received);
+                    // đọc payload len bytes
+                    byte[] payload = ReadExact(len);
+                    if (payload == null) break;
 
-                    // Vì đây là form, cần Invoke để truy cập UI
+                    string data = Encoding.UTF8.GetString(payload, 0, payload.Length);
                     this.Invoke(new Action(() =>
                     {
                         ProcessServerMessage(data);
@@ -163,6 +172,20 @@ namespace Bai5
                 }));
             }
         }
+
+        private byte[] ReadExact(int count)
+        {
+            byte[] buffer = new byte[count];
+            int offset = 0;
+            while (offset < count)
+            {
+                int rec = client.Receive(buffer, offset, count - offset, SocketFlags.None);
+                if (rec == 0) return null; // connection closed
+                offset += rec;
+            }
+            return buffer;
+        }
+
 
         private void butketnoi_Click(object sender, EventArgs e)
         {
@@ -211,19 +234,56 @@ namespace Bai5
                 picanhmon.Image = Image.FromFile(currentImagePath);
             }
         }
+        private void SendMessage(string msg)
+        {
+            if (!isConnected) return;
+            byte[] payload = Encoding.UTF8.GetBytes(msg);
+            byte[] lenPrefix = BitConverter.GetBytes(payload.Length);
+            byte[] packet = new byte[4 + payload.Length];
+            Array.Copy(lenPrefix, 0, packet, 0, 4);
+            Array.Copy(payload, 0, packet, 4, payload.Length);
+            client.Send(packet);
+        }
+
 
         private void butthemmon_Click(object sender, EventArgs e)
         {
-            if (!isConnected) { MessageBox.Show("Chưa kết nối server!"); return; }
-            if (texttenmon.Text == "" || currentImagePath == "")
+            if (!isConnected)
+            {
+                MessageBox.Show("Chưa kết nối server!");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(texttennguoi.Text))
+            {
+                MessageBox.Show("Vui lòng nhập tên người cung cấp trước!");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(texttenmon.Text) || string.IsNullOrWhiteSpace(currentImagePath))
             {
                 MessageBox.Show("Vui lòng nhập tên món và chọn ảnh!");
                 return;
             }
 
-            string msg = $"FOOD|{texttennguoi.Text}|{texttenmon.Text}|{currentImagePath}";
-            client.Send(Encoding.UTF8.GetBytes(msg));
+            try
+            {
+                // Đọc file ảnh → mã hóa sang base64
+                byte[] imgBytes = File.ReadAllBytes(currentImagePath);
+                string base64 = Convert.ToBase64String(imgBytes);
+
+                // Gửi sang server dạng: FOOD|TênNgười|TênMón|Base64
+                string msg = $"FOOD|{texttennguoi.Text}|{texttenmon.Text}|{base64}";
+                client.Send(Encoding.UTF8.GetBytes(msg));
+
+                MessageBox.Show("Đã gửi món ăn kèm ảnh thành công!");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Lỗi khi gửi ảnh: " + ex.Message);
+            }
         }
+
 
         private void buthienthi_Click(object sender, EventArgs e)
         {

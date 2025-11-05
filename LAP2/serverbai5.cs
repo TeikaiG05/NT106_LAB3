@@ -378,8 +378,13 @@ namespace LAP2
             {
                 if (client != null && client.Connected)
                 {
-                    byte[] b = Encoding.UTF8.GetBytes(msg);
-                    client.Send(b);
+                    byte[] payload = Encoding.UTF8.GetBytes(msg);
+                    byte[] lenPrefix = BitConverter.GetBytes(payload.Length); // little-endian
+                                                                              // nếu muốn network order dùng IPAddress.HostToNetworkOrder
+                    byte[] packet = new byte[4 + payload.Length];
+                    Array.Copy(lenPrefix, 0, packet, 0, 4);
+                    Array.Copy(payload, 0, packet, 4, payload.Length);
+                    client.Send(packet);
                 }
             }
             catch { }
@@ -387,39 +392,229 @@ namespace LAP2
 
         private void SendToAllClients(string msg)
         {
-            byte[] b = Encoding.UTF8.GetBytes(msg);
+            byte[] payload = Encoding.UTF8.GetBytes(msg);
+            byte[] lenPrefix = BitConverter.GetBytes(payload.Length);
+            byte[] packet = new byte[4 + payload.Length];
+            Array.Copy(lenPrefix, 0, packet, 0, 4);
+            Array.Copy(payload, 0, packet, 4, payload.Length);
+
             lock (clients)
             {
                 foreach (var c in clients)
                 {
-                    try { c.Send(b); } catch { }
+                    try { c.Send(packet); } catch { }
                 }
             }
         }
+
+
+
         #endregion
 
         #region Xử lý lệnh client
         private void ProcessClientMessage(Socket client, string msg)
         {
             if (string.IsNullOrEmpty(msg)) return;
-
             string[] parts = msg.Split('|');
             string cmd = parts[0].ToUpperInvariant();
 
             try
             {
-                if (cmd == "RANDOM_GLOBAL")
+                switch (cmd)
                 {
-                    var rand = GetRandomDish();
-                    if (rand != null)
-                    {
-                        SendToClient(client, $"RANDOM|{rand.Value.Provider}|{rand.Value.Name}|{rand.Value.Image}");
-                    }
-                    else SendToClient(client, "RANDOM|||");
+                    case "USER":
+                        using (var conn = new SQLiteConnection(filedb))
+                        {
+                            conn.Open();
+                            string sql = "INSERT INTO NguoiDung (HoVaTen, QuyenHan) VALUES (@HoVaTen, @QuyenHan)";
+                            using (var cmdSql = new SQLiteCommand(sql, conn))
+                            {
+                                cmdSql.Parameters.AddWithValue("@HoVaTen", parts[1]);
+                                cmdSql.Parameters.AddWithValue("@QuyenHan", parts[2]);
+                                cmdSql.ExecuteNonQuery();
+                            }
+                        }
+                        SendToClient(client, "USER_OK|");
+                        break;
+
+                    case "FOOD":
+                        using (var conn = new SQLiteConnection(filedb))
+                        {
+                            conn.Open();
+
+                            string sqlID = "SELECT IDNCC FROM NguoiDung WHERE HoVaTen=@name LIMIT 1";
+                            int id = -1;
+                            using (var cmdSql = new SQLiteCommand(sqlID, conn))
+                            {
+                                cmdSql.Parameters.AddWithValue("@name", parts[1]);
+                                var obj = cmdSql.ExecuteScalar();
+                                if (obj != null) id = Convert.ToInt32(obj);
+                            }
+                            if (id == -1)
+                            {
+                                SendToClient(client, "ERROR|Người dùng không tồn tại");
+                                return;
+                            }
+
+                            // ✅ Giữ nguyên form, chỉ thay logic ảnh
+                            // Trước đây: kiểm tra File.Exists(parts[3]) → luôn sai
+                            // Giờ: lưu trực tiếp base64 mà client gửi lên
+                            string base64 = parts[3];
+
+                            string sqlAdd = "INSERT INTO MonAn (TenMonAn, HinhAnh, IDNCC) VALUES (@Ten,@Img,@ID)";
+                            using (var cmdSql = new SQLiteCommand(sqlAdd, conn))
+                            {
+                                cmdSql.Parameters.AddWithValue("@Ten", parts[2]);
+                                cmdSql.Parameters.AddWithValue("@Img", base64);
+                                cmdSql.Parameters.AddWithValue("@ID", id);
+                                cmdSql.ExecuteNonQuery();
+                            }
+                        }
+
+                        SendToClient(client, "FOOD_OK|");
+                        break;
+
+
+
+                    case "SHOW":
+                        using (var conn = new SQLiteConnection(filedb))
+                        {
+                            conn.Open();
+                            string sql = "SELECT TenMonAn, HinhAnh, (SELECT HoVaTen FROM NguoiDung WHERE IDNCC=MonAn.IDNCC) FROM MonAn";
+                            using (var cmdSql = new SQLiteCommand(sql, conn))
+                            using (var reader = cmdSql.ExecuteReader())
+                            {
+                                List<string> rows = new List<string>();
+                                while (reader.Read())
+                                {
+                                    string ten = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                                    string anh = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                                    string nguoi = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                                    rows.Add($"{ten},{anh},{nguoi}");
+                                }
+                                SendToClient(client, "DATA|" + string.Join(";", rows));
+                            }
+                        }
+                        break;
+
+                    case "RANDOM_PERSONAL":
+                        using (var conn = new SQLiteConnection(filedb))
+                        {
+                            conn.Open();
+
+                            // Tìm ID người dùng theo tên
+                            string sqlID = "SELECT IDNCC FROM NguoiDung WHERE HoVaTen=@name LIMIT 1";
+                            int id = -1;
+                            using (var cmdSql = new SQLiteCommand(sqlID, conn))
+                            {
+                                cmdSql.Parameters.AddWithValue("@name", parts[1]);
+                                var obj = cmdSql.ExecuteScalar();
+                                if (obj != null) id = Convert.ToInt32(obj);
+                            }
+                            if (id == -1)
+                            {
+                                SendToClient(client, "ERROR|Người dùng không tồn tại");
+                                return;
+                            }
+
+                            // Lấy danh sách món ăn của người đó
+                            string sqlGet = "SELECT TenMonAn, HinhAnh FROM MonAn WHERE IDNCC=@id";
+                            List<(string, string)> ds = new List<(string, string)>();
+                            using (var cmdSql = new SQLiteCommand(sqlGet, conn))
+                            {
+                                cmdSql.Parameters.AddWithValue("@id", id);
+                                using (var rd = cmdSql.ExecuteReader())
+                                {
+                                    while (rd.Read())
+                                    {
+                                        string tenMon = rd.GetString(0);
+                                        string hinhAnh = rd.IsDBNull(1) ? "" : rd.GetString(1); // ✅ lấy base64 ảnh
+                                        ds.Add((tenMon, hinhAnh));
+                                    }
+                                }
+                            }
+
+                            if (ds.Count == 0)
+                            {
+                                SendToClient(client, $"RANDOM_PERSONAL|{parts[1]}|Chưa có món nào|");
+                                return;
+                            }
+
+                            // Random món trong danh sách
+                            Random rnd = new Random();
+                            var mon = ds[rnd.Next(ds.Count)];
+
+                            // ✅ Gửi luôn ảnh base64 cho client
+                            SendToClient(client, $"RANDOM_PERSONAL|{parts[1]}|{mon.Item1}|{mon.Item2}");
+                        }
+                        break;
+
+
+                    case "DELETE_PERSONAL":
+                        string nguoiXoa = parts[1];
+                        using (var conn = new SQLiteConnection(filedb))
+                        {
+                            conn.Open();
+                            string sql = @"DELETE FROM MonAn WHERE IDNCC=(SELECT IDNCC FROM NguoiDung WHERE HoVaTen=@name)";
+                            using (var cmdSql = new SQLiteCommand(sql, conn))
+                            {
+                                cmdSql.Parameters.AddWithValue("@name", nguoiXoa);
+                                cmdSql.ExecuteNonQuery();
+                            }
+                        }
+                        SendToClient(client, "OK|Đã xóa món cá nhân");
+                        break;
+
+                    case "RANDOM_GLOBAL":
+                        using (var conn = new SQLiteConnection(filedb))
+                        {
+                            conn.Open();
+
+                            // Lấy toàn bộ món ăn trong database (có ảnh)
+                            string sqlGet = "SELECT MonAn.TenMonAn, MonAn.HinhAnh, NguoiDung.HoVaTen " +
+                                            "FROM MonAn JOIN NguoiDung ON MonAn.IDNCC = NguoiDung.IDNCC";
+                            List<(string, string, string)> ds = new List<(string, string, string)>();
+                            using (var cmdSql = new SQLiteCommand(sqlGet, conn))
+                            {
+                                using (var rd = cmdSql.ExecuteReader())
+                                {
+                                    while (rd.Read())
+                                    {
+                                        string tenMon = rd.GetString(0);
+                                        string hinhAnh = rd.IsDBNull(1) ? "" : rd.GetString(1); // ✅ đọc base64 ảnh
+                                        string tenNguoi = rd.GetString(2);
+                                        ds.Add((tenMon, hinhAnh, tenNguoi));
+                                    }
+                                }
+                            }
+
+                            if (ds.Count == 0)
+                            {
+                                SendToClient(client, "RANDOM_GLOBAL|Không có món nào trong hệ thống|");
+                                return;
+                            }
+
+                            // Random món từ danh sách toàn bộ
+                            Random rnd = new Random();
+                            var mon = ds[rnd.Next(ds.Count)];
+
+                            // ✅ Gửi luôn ảnh base64 cho client
+                            SendToClient(client, $"RANDOM_GLOBAL|{mon.Item3}|{mon.Item1}|{mon.Item2}");
+                        }
+                        break;
+
+
+                    default:
+                        SendToClient(client, "ERROR|Lệnh không hợp lệ");
+                        break;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                SendToClient(client, "ERROR|" + ex.Message);
+            }
         }
+
 
         private (string Name, string Image, string Provider)? GetRandomDish()
         {

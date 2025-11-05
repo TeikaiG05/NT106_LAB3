@@ -49,19 +49,19 @@
             this.picanhmon = new System.Windows.Forms.PictureBox();
             this.ngaunhienten = new System.Windows.Forms.Label();
             this.ngaunhienmon = new System.Windows.Forms.Label();
-            this.picmonanngaunhien = new System.Windows.Forms.PictureBox();
             this.dataGridView1 = new System.Windows.Forms.DataGridView();
             this.buthienthi = new System.Windows.Forms.Button();
             this.butngaunhiencanhan = new System.Windows.Forms.Button();
             this.butngaunhiencongdong = new System.Windows.Forms.Button();
             this.butxoamon = new System.Windows.Forms.Button();
+            this.picmonanngaunhien = new System.Windows.Forms.PictureBox();
             this.grketnoi.SuspendLayout();
             this.grnguoidung.SuspendLayout();
             this.grmonan.SuspendLayout();
             this.grdulieumonan.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.picanhmon)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.picmonanngaunhien)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.picmonanngaunhien)).BeginInit();
             this.SuspendLayout();
             // 
             // grketnoi
@@ -108,12 +108,12 @@
             // 
             // grdulieumonan
             // 
+            this.grdulieumonan.Controls.Add(this.picmonanngaunhien);
             this.grdulieumonan.Controls.Add(this.butxoamon);
             this.grdulieumonan.Controls.Add(this.butngaunhiencongdong);
             this.grdulieumonan.Controls.Add(this.butngaunhiencanhan);
             this.grdulieumonan.Controls.Add(this.buthienthi);
             this.grdulieumonan.Controls.Add(this.dataGridView1);
-            this.grdulieumonan.Controls.Add(this.picmonanngaunhien);
             this.grdulieumonan.Controls.Add(this.ngaunhienmon);
             this.grdulieumonan.Controls.Add(this.ngaunhienten);
             this.grdulieumonan.Location = new System.Drawing.Point(-2, 297);
@@ -273,16 +273,6 @@
             this.ngaunhienmon.TabIndex = 2;
             this.ngaunhienmon.Text = "-";
             // 
-            // picmonanngaunhien
-            // 
-            this.picmonanngaunhien.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Zoom;
-            this.picmonanngaunhien.Location = new System.Drawing.Point(385, 65);
-            this.picmonanngaunhien.Name = "picmonanngaunhien";
-            this.picmonanngaunhien.Size = new System.Drawing.Size(108, 89);
-            this.picmonanngaunhien.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.picmonanngaunhien.TabIndex = 11;
-            this.picmonanngaunhien.TabStop = false;
-            // 
             // dataGridView1
             // 
             this.dataGridView1.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
@@ -331,6 +321,16 @@
             this.butxoamon.UseVisualStyleBackColor = true;
             this.butxoamon.Click += new System.EventHandler(this.butxoamon_Click);
             // 
+            // picmonanngaunhien
+            // 
+            this.picmonanngaunhien.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Zoom;
+            this.picmonanngaunhien.Location = new System.Drawing.Point(385, 72);
+            this.picmonanngaunhien.Name = "picmonanngaunhien";
+            this.picmonanngaunhien.Size = new System.Drawing.Size(108, 89);
+            this.picmonanngaunhien.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
+            this.picmonanngaunhien.TabIndex = 17;
+            this.picmonanngaunhien.TabStop = false;
+            // 
             // Bai5_lap3
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -351,8 +351,8 @@
             this.grdulieumonan.ResumeLayout(false);
             this.grdulieumonan.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.picanhmon)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.picmonanngaunhien)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.picmonanngaunhien)).EndInit();
             this.ResumeLayout(false);
 
         }
@@ -379,13 +379,13 @@
         private System.Windows.Forms.Button butthemanh;
         private System.Windows.Forms.TextBox texttenmon;
         private System.Windows.Forms.DataGridView dataGridView1;
-        private System.Windows.Forms.PictureBox picmonanngaunhien;
         private System.Windows.Forms.Label ngaunhienmon;
         private System.Windows.Forms.Label ngaunhienten;
         private System.Windows.Forms.Button butngaunhiencongdong;
         private System.Windows.Forms.Button butngaunhiencanhan;
         private System.Windows.Forms.Button buthienthi;
         private System.Windows.Forms.Button butxoamon;
+        private System.Windows.Forms.PictureBox picmonanngaunhien;
     }
 }
 
