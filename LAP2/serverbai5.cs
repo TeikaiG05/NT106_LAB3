@@ -352,25 +352,55 @@ namespace LAP2
 
         private void ReceiveClient(Socket client)
         {
-            byte[] buffer = new byte[1024 * 64];
             try
             {
                 while (serverRunning)
                 {
-                    int rec = client.Receive(buffer);
-                    if (rec == 0) break;
+                    // Đọc 4 byte đầu tiên (độ dài thông điệp)
+                    byte[] lenBuf = ReadExact(client, 4);
+                    if (lenBuf == null) break;
 
-                    string msg = Encoding.UTF8.GetString(buffer, 0, rec);
+                    int length = BitConverter.ToInt32(lenBuf, 0);
+                    if (length <= 0 || length > 10_000_000) break; // tránh gói lỗi
+
+                    // Đọc đúng số byte tiếp theo
+                    byte[] payload = ReadExact(client, length);
+                    if (payload == null) break;
+
+                    // Giải mã chuỗi
+                    string msg = Encoding.UTF8.GetString(payload);
+
+                    // Xử lý lệnh
                     ProcessClientMessage(client, msg);
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Lỗi nhận dữ liệu client: " + ex.Message);
+            }
             finally
             {
                 lock (clients) clients.Remove(client);
                 try { client.Close(); } catch { }
             }
         }
+
+        /// <summary>
+        /// Đọc đúng 'count' byte từ socket, chờ đến khi đủ.
+        /// </summary>
+        private byte[] ReadExact(Socket s, int count)
+        {
+            byte[] buffer = new byte[count];
+            int offset = 0;
+            while (offset < count)
+            {
+                int received = s.Receive(buffer, offset, count - offset, SocketFlags.None);
+                if (received == 0) return null;
+                offset += received;
+            }
+            return buffer;
+        }
+
 
         private void SendToClient(Socket client, string msg)
         {
@@ -562,8 +592,31 @@ namespace LAP2
                                 cmdSql.ExecuteNonQuery();
                             }
                         }
+
                         SendToClient(client, "OK|Đã xóa món cá nhân");
+
+                        // 🟢 Gửi lại danh sách món mới cho client (tự động refresh)
+                        using (var conn = new SQLiteConnection(filedb))
+                        {
+                            conn.Open();
+                            string sql = "SELECT TenMonAn, HinhAnh, (SELECT HoVaTen FROM NguoiDung WHERE IDNCC=MonAn.IDNCC) FROM MonAn";
+                            using (var cmdSql = new SQLiteCommand(sql, conn))
+                            using (var reader = cmdSql.ExecuteReader())
+                            {
+                                List<string> rows = new List<string>();
+                                while (reader.Read())
+                                {
+                                    string ten = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                                    string anh = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                                    string nguoi = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                                    rows.Add($"{ten},{anh},{nguoi}");
+                                }
+                                SendToClient(client, "DATA|" + string.Join(";", rows));
+                            }
+                        }
+
                         break;
+
 
                     case "RANDOM_GLOBAL":
                         using (var conn = new SQLiteConnection(filedb))

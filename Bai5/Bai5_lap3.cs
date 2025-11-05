@@ -32,7 +32,6 @@ namespace Bai5
 
         void ProcessServerMessage(string message)
         {
-            // Giả sử server gửi dạng: TYPE|data
             string[] parts = message.Split('|');
             string type = parts[0];
 
@@ -49,11 +48,10 @@ namespace Bai5
                 case "DATA":
                     dataGridView1.Rows.Clear();
 
-                    // Nếu chưa có cột, tạo tự động
                     if (dataGridView1.Columns.Count == 0)
                     {
                         dataGridView1.Columns.Add("TenMonAn", "Tên món ăn");
-                        dataGridView1.Columns.Add("HinhAnh", "Đường dẫn ảnh");
+                        dataGridView1.Columns.Add("HinhAnh", "Ảnh (Base64)");
                         dataGridView1.Columns.Add("NguoiCungCap", "Người cung cấp");
                     }
 
@@ -63,14 +61,13 @@ namespace Bai5
                         if (!string.IsNullOrWhiteSpace(item))
                         {
                             string[] info = item.Split(',');
-                            // Đảm bảo số phần tử đúng
                             if (info.Length >= 3)
                                 dataGridView1.Rows.Add(info[0], info[1], info[2]);
                         }
                     }
                     break;
 
-
+                // ======= 3 loại RANDOM đều vào đây =======
                 case "RANDOM":
                 case "RANDOM_PERSONAL":
                 case "RANDOM_GLOBAL":
@@ -80,9 +77,10 @@ namespace Bai5
                         ngaunhienmon.Text = parts[2];
                         try
                         {
-                            if (!string.IsNullOrEmpty(parts[3]))
+                            string base64 = parts[3].Replace("\r", "").Replace("\n", "").Trim();
+                            if (!string.IsNullOrEmpty(base64))
                             {
-                                byte[] imgBytes = Convert.FromBase64String(parts[3]);
+                                byte[] imgBytes = Convert.FromBase64String(base64);
                                 using (var ms = new MemoryStream(imgBytes))
                                 {
                                     picmonanngaunhien.Image = Image.FromStream(ms);
@@ -101,13 +99,13 @@ namespace Bai5
                     }
                     break;
 
-
+                // ======= Khi có món mới gửi đến =======
                 case "NEWMON":
                     if (parts.Length >= 4)
                     {
                         string nguoi = parts[1];
                         string tenmon = parts[2];
-                        string base64 = parts[3];
+                        string base64 = parts[3].Replace("\r", "").Replace("\n", "").Trim();
 
                         try
                         {
@@ -119,6 +117,9 @@ namespace Bai5
                                     picanhmon.Image = Image.FromStream(ms);
                                     picanhmon.SizeMode = PictureBoxSizeMode.Zoom;
                                 }
+
+                                // Lưu tạm ảnh ra file (debug)
+                                File.WriteAllBytes("last_received_image.jpg", Convert.FromBase64String(base64));
                             }
 
                             texttennguoi.Text = nguoi;
@@ -133,34 +134,31 @@ namespace Bai5
                     }
                     break;
 
-
-
                 default:
                     break;
             }
         }
 
 
+
         void ReceiveData()
         {
             try
             {
-                while (true)
+                while (isConnected && client.Connected)
                 {
-                    // đọc 4 byte length
+                    if (client.Poll(100000, SelectMode.SelectRead) && client.Available == 0)
+                        throw new SocketException(); // server đóng kết nối
+
                     byte[] lenBuf = ReadExact(4);
                     if (lenBuf == null) break;
-                    int len = BitConverter.ToInt32(lenBuf, 0); // match server endianness
+                    int len = BitConverter.ToInt32(lenBuf, 0);
 
-                    // đọc payload len bytes
                     byte[] payload = ReadExact(len);
                     if (payload == null) break;
 
                     string data = Encoding.UTF8.GetString(payload, 0, payload.Length);
-                    this.Invoke(new Action(() =>
-                    {
-                        ProcessServerMessage(data);
-                    }));
+                    this.Invoke(new Action(() => ProcessServerMessage(data)));
                 }
             }
             catch
@@ -180,7 +178,7 @@ namespace Bai5
             while (offset < count)
             {
                 int rec = client.Receive(buffer, offset, count - offset, SocketFlags.None);
-                if (rec == 0) return null; // connection closed
+                if (rec == 0) return null;
                 offset += rec;
             }
             return buffer;
@@ -221,7 +219,7 @@ namespace Bai5
             if (!isConnected) { MessageBox.Show("Chưa kết nối server!"); return; }
 
             string msg = $"USER|{texttennguoi.Text}|{textquyenhan.Text}";
-            client.Send(Encoding.UTF8.GetBytes(msg));
+            SendMessage(msg);
         }
 
         private void butthemanh_Click(object sender, EventArgs e)
@@ -234,16 +232,7 @@ namespace Bai5
                 picanhmon.Image = Image.FromFile(currentImagePath);
             }
         }
-        private void SendMessage(string msg)
-        {
-            if (!isConnected) return;
-            byte[] payload = Encoding.UTF8.GetBytes(msg);
-            byte[] lenPrefix = BitConverter.GetBytes(payload.Length);
-            byte[] packet = new byte[4 + payload.Length];
-            Array.Copy(lenPrefix, 0, packet, 0, 4);
-            Array.Copy(payload, 0, packet, 4, payload.Length);
-            client.Send(packet);
-        }
+
 
 
         private void butthemmon_Click(object sender, EventArgs e)
@@ -274,7 +263,7 @@ namespace Bai5
 
                 // Gửi sang server dạng: FOOD|TênNgười|TênMón|Base64
                 string msg = $"FOOD|{texttennguoi.Text}|{texttenmon.Text}|{base64}";
-                client.Send(Encoding.UTF8.GetBytes(msg));
+                SendMessage(msg);
 
                 MessageBox.Show("Đã gửi món ăn kèm ảnh thành công!");
             }
@@ -287,22 +276,32 @@ namespace Bai5
 
         private void buthienthi_Click(object sender, EventArgs e)
         {
-            client.Send(Encoding.UTF8.GetBytes("SHOW"));
+            SendMessage("SHOW");
         }
 
         private void butngaunhiencanhan_Click(object sender, EventArgs e)
         {
-            client.Send(Encoding.UTF8.GetBytes($"RANDOM_PERSONAL|{texttennguoi.Text}"));
+            SendMessage($"RANDOM_PERSONAL|{texttennguoi.Text}");
         }
 
         private void butngaunhiencongdong_Click(object sender, EventArgs e)
         {
-            client.Send(Encoding.UTF8.GetBytes("RANDOM_GLOBAL"));
+            SendMessage("RANDOM_GLOBAL");
         }
 
         private void butxoamon_Click(object sender, EventArgs e)
         {
-            client.Send(Encoding.UTF8.GetBytes($"DELETE_PERSONAL|{texttennguoi.Text}"));
+            SendMessage($"DELETE_PERSONAL|{texttennguoi.Text}");
+        }
+        private void    SendMessage(string msg)
+        {
+            if (!isConnected) return;
+            byte[] payload = Encoding.UTF8.GetBytes(msg);
+            byte[] lenPrefix = BitConverter.GetBytes(payload.Length);
+            byte[] packet = new byte[4 + payload.Length];
+            Array.Copy(lenPrefix, 0, packet, 0, 4);
+            Array.Copy(payload, 0, packet, 4, payload.Length);
+            client.Send(packet);
         }
     }
 }
