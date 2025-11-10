@@ -22,36 +22,44 @@ namespace Bai3
            
 
         }
-
         private void btConnect_Click(object sender, EventArgs e)
         {
             try
             {
                 tcpClient = new TcpClient();
-                IPAddress ipAddress = IPAddress.Parse("127.0.0.1");
+                IPAddress ipAddress = IPAddress.Parse("25.5.134.104");
                 IPEndPoint ipEndPoint = new IPEndPoint(ipAddress, 8080);
                 tcpClient.Connect(ipEndPoint);
                 MessageBox.Show("Connected");
+                btConnect.Enabled = false;
+                btSend.Enabled = true;
+                btDisconnect.Enabled = true;
             }
             catch (Exception ex)
             {
                 MessageBox.Show("Connect error: " + ex.Message);
             }
         }
-
         private void btSend_Click(object sender, EventArgs e)
         {
             try
             {
                 if (tcpClient == null || !tcpClient.Connected)
                 {
-                    MessageBox.Show("Chưa kết nối server.");
+                    MessageBox.Show("Not connected to server.");
                     return;
                 }
-
+                if (string.IsNullOrWhiteSpace(tbChat.Text))
+                {
+                    MessageBox.Show("Please enter a message to send.");
+                    return;
+                }
+                string message = tbChat.Text + "\n";
                 NetworkStream ns = tcpClient.GetStream();
-                byte[] data = Encoding.ASCII.GetBytes("Hello server\n"); // server chờ '\n'
+                byte[] data = Encoding.ASCII.GetBytes(message);
                 ns.Write(data, 0, data.Length);
+                tbChat.Clear();
+                tbChat.Focus();
             }
             catch (Exception ex)
             {
@@ -76,10 +84,19 @@ namespace Bai3
                     tcpClient = null;
                 }
             }
-            catch (Exception ex)
+            finally
             {
-                MessageBox.Show("Disconnect error: " + ex.Message);
+                btConnect.Enabled = true;
+                btSend.Enabled = false;
+                btDisconnect.Enabled = false;
             }
+        }
+
+        private void Client_Load(object sender, EventArgs e)
+        {
+            btSend.Enabled = false;
+            btDisconnect.Enabled = false;
         }
     }
 }
+

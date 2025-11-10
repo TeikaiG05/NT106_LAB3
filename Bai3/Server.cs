@@ -22,9 +22,11 @@ namespace Bai3
 
         private void btListen_Click(object sender, EventArgs e)
         {
+            btListen.Enabled = false;
             CheckForIllegalCrossThreadCalls = false;
             Thread serverThread = new Thread(new ThreadStart(StartUnsafeThread));
             serverThread.Start();
+            serverThread.IsBackground = true;
         }
         void StartUnsafeThread()
         {
@@ -32,12 +34,15 @@ namespace Bai3
             byte[] recv = new byte[1];
 
             Socket listenerSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            IPEndPoint ipepServer = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 8080); // sửa “ ” -> " "
+            IPEndPoint ipepServer = new IPEndPoint(IPAddress.Any, 8080);
             listenerSocket.Bind(ipepServer);
-            listenerSocket.Listen(10);                        // sửa backlog: không dùng -1
+            listenerSocket.Listen(10);
+            this.Invoke((Action)(() => lvTin.Items.Add(new ListViewItem("Server started!"))));
 
-            Socket clientSocket = listenerSocket.Accept();    // khai báo biến clientSocket cục bộ
-            lvTin.Items.Add(new ListViewItem("New client connected"));
+            Socket clientSocket = listenerSocket.Accept();
+            var remote = (IPEndPoint)clientSocket.RemoteEndPoint;
+            string clientInfo = $"New client connected: {remote.Address}:{remote.Port}";
+            this.Invoke((Action)(() => lvTin.Items.Add(new ListViewItem(clientInfo))));
 
             while (clientSocket.Connected)
             {
@@ -45,20 +50,24 @@ namespace Bai3
                 do
                 {
                     bytesReceived = clientSocket.Receive(recv);
-                    if (bytesReceived == 0)                   // client đóng kết nối -> thoát vòng
+                    if (bytesReceived == 0)
                         break;
                     text += Encoding.ASCII.GetString(recv, 0, bytesReceived);
                 }
-                // tránh IndexOutOfRange khi chuỗi rỗng
                 while (text.Length == 0 || text[text.Length - 1] != '\n');
 
-                if (text.Length == 0)                         // đóng kết nối
+                if (text.Length == 0)
                     break;
 
-                lvTin.Items.Add(new ListViewItem(text));
+                this.Invoke((Action)(() => lvTin.Items.Add(new ListViewItem($"From client: {text}"))));
             }
 
             listenerSocket.Close();
+            this.Invoke((Action)(() =>
+            {
+                lvTin.Items.Add(new ListViewItem("Client disconnected"));
+                btListen.Enabled = true;
+            }));
         }
     }
     }

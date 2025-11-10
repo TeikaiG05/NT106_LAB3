@@ -83,6 +83,7 @@
             this.Controls.Add(this.tbChat);
             this.Name = "Client";
             this.Text = "Client";
+            this.Load += new System.EventHandler(this.Client_Load);
             this.ResumeLayout(false);
             this.PerformLayout();
 
